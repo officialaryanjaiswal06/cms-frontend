@@ -11,7 +11,7 @@ import {
   PermissionDto 
 } from '@/types';
 
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = 'http://localhost:9090';
 
 // Create axios instance
 const api: AxiosInstance = axios.create({

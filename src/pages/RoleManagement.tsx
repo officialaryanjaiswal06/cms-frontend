@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { rolesApi, modulesApi } from '@/services/api';
 import { Role, Module, PermissionDto } from '@/types';
 import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -53,10 +54,11 @@ import {
   Package,
 } from 'lucide-react';
 
-const PROTECTED_ROLES = ['SUPERADMIN', 'USER'];
+const PROTECTED_ROLES = ['SUPERADMIN', 'ADMIN', 'USER'];
 
 const RoleManagement: React.FC = () => {
-  const [roles, setRoles] = useState<Role[]>([]);
+  const { isAuthenticated, hasAnyRole, isLoading: authLoading } = useAuth();
+  const [roles, setRoles] = useState<(Role | string)[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [permissions, setPermissions] = useState<PermissionDto[]>([]);
@@ -76,12 +78,46 @@ const RoleManagement: React.FC = () => {
         rolesApi.getAll(),
         modulesApi.getAll(),
       ]);
-      setRoles(rolesData);
+      console.log('Fetched roles:', rolesData);
+      console.log('Fetched modules:', modulesData);
+      console.log('Role data types:', rolesData.map(r => ({ value: r, type: typeof r })));
+
+      // Handle both string[] and Role[] formats from backend
+      const processedRoles = rolesData.map((role: any) => {
+        if (typeof role === 'string') {
+          // Backend returned strings - this is the issue!
+          console.warn('⚠️ Backend returned role as string:', role, '- This will cause 404 errors when fetching permissions');
+          return { id: 0, name: role }; // Temporary fix, but backend should return proper objects
+        } else if (typeof role === 'object' && role.id && role.name) {
+          // Backend returned proper Role objects
+          return role;
+        } else {
+          console.warn('Unknown role format:', role);
+          return role;
+        }
+      });
+
+      // Check if currently selected role still exists after refresh
+      if (selectedRole) {
+        const roleStillExists = processedRoles.some(role =>
+          (role.id && selectedRole.id && role.id === selectedRole.id) ||
+          (role.name === selectedRole.name)
+        );
+
+        if (!roleStillExists) {
+          console.log('⚠️ Selected role no longer exists, clearing selection');
+          setSelectedRole(null);
+          setPermissions([]);
+        }
+      }
+
+      setRoles(processedRoles);
       setModules(modulesData);
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error fetching roles and modules:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch roles and modules',
+        description: `Failed to fetch roles and modules: ${error.response?.data?.message || error.message}`,
         variant: 'destructive',
       });
     } finally {
@@ -90,10 +126,19 @@ const RoleManagement: React.FC = () => {
   };
 
   const fetchPermissions = async (roleId: number) => {
+    console.log('🔍 fetchPermissions called with roleId:', roleId);
+
+    if (roleId <= 0) {
+      console.warn('🚫 Skipping fetchPermissions for invalid roleId:', roleId);
+      return;
+    }
+
     setIsLoadingPermissions(true);
     try {
+      console.log('📡 Fetching permissions for role ID:', roleId);
       const data = await rolesApi.getPermissions(roleId);
-      
+      console.log('✅ Received permissions data:', data);
+
       // Create permission entries for all modules
       const permissionMap = new Map(data.map((p) => [p.moduleName, p]));
       const allPermissions = modules.map((module) => {
@@ -106,12 +151,15 @@ const RoleManagement: React.FC = () => {
           canDelete: false,
         };
       });
-      
+
+      console.log('📋 Setting permissions:', allPermissions);
       setPermissions(allPermissions);
-    } catch (error) {
+    } catch (error: any) {
+      console.error('❌ Error fetching permissions:', error);
+      console.error('❌ Error response:', error.response?.data, error.response?.status);
       toast({
         title: 'Error',
-        description: 'Failed to fetch permissions',
+        description: `Failed to fetch permissions: ${error.response?.data?.message || error.message}`,
         variant: 'destructive',
       });
     } finally {
@@ -119,19 +167,66 @@ const RoleManagement: React.FC = () => {
     }
   };
 
+  // Check authentication and permissions
   useEffect(() => {
+    if (authLoading) return;
+
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (!hasAnyRole(['SUPERADMIN', 'ADMIN'])) {
+      toast({
+        title: 'Access Denied',
+        description: 'You need SUPERADMIN or ADMIN role to access role management',
+        variant: 'destructive',
+      });
+      setIsLoading(false);
+      return;
+    }
+
     fetchRolesAndModules();
-  }, []);
+  }, [isAuthenticated, hasAnyRole, authLoading]);
 
   useEffect(() => {
-    if (selectedRole && modules.length > 0) {
-      fetchPermissions(selectedRole.id);
+    console.log('🔄 useEffect triggered - selectedRole:', selectedRole, 'modules.length:', modules.length);
+
+    if (modules.length > 0) {
+      if (selectedRole && selectedRole.id > 0) {
+        console.log('✅ Fetching permissions for valid role ID:', selectedRole.id);
+        // Only fetch permissions for roles with valid IDs
+        fetchPermissions(selectedRole.id);
+      } else {
+        console.log('⚠️ Using default permissions - selectedRole:', selectedRole, 'ID:', selectedRole?.id);
+        // Initialize with default permissions (all modules with false permissions)
+        const defaultPermissions = modules.map((module) => ({
+          moduleName: module.moduleName,
+          canSelect: false,
+          canCreate: false,
+          canUpdate: false,
+          canDelete: false,
+        }));
+        setPermissions(defaultPermissions);
+      }
+    } else {
+      console.log('📭 No modules loaded yet, skipping permission setup');
     }
   }, [selectedRole, modules]);
 
-  const handleRoleSelect = (roleId: string) => {
-    const role = roles.find((r) => r.id.toString() === roleId);
-    setSelectedRole(role || null);
+  const handleRoleSelect = (role: Role | string) => {
+    console.log('🎯 handleRoleSelect called with:', role, 'Type:', typeof role);
+
+    if (typeof role === 'string') {
+      console.log('🔄 Converting string role to object with ID 0:', role);
+      // Convert string to Role object for consistency
+      const roleObject = { id: 0, name: role };
+      console.log('📝 Setting selectedRole to:', roleObject);
+      setSelectedRole(roleObject);
+    } else {
+      console.log('✅ Setting selectedRole to existing object with ID:', role.id);
+      setSelectedRole(role);
+    }
   };
 
   const handleCreateRole = async () => {
@@ -172,11 +267,13 @@ const RoleManagement: React.FC = () => {
         title: 'Success',
         description: 'Role deleted successfully',
       });
+      // Clear selected role immediately to prevent permission fetching
       if (selectedRole?.id === roleId) {
         setSelectedRole(null);
         setPermissions([]);
       }
-      fetchRolesAndModules();
+      // Refresh data after clearing selection
+      await fetchRolesAndModules();
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -238,6 +335,9 @@ const RoleManagement: React.FC = () => {
     moduleName: string,
     field: keyof Omit<PermissionDto, 'moduleName'>
   ) => {
+    if (!selectedRole) return; // Don't allow toggling when no role is selected
+
+    // Allow toggling even for roles with ID 0, but saving will be prevented
     setPermissions((prev) =>
       prev.map((p) =>
         p.moduleName === moduleName ? { ...p, [field]: !p[field] } : p
@@ -247,6 +347,15 @@ const RoleManagement: React.FC = () => {
 
   const handleSavePermissions = async () => {
     if (!selectedRole) return;
+
+    if (selectedRole.id <= 0) {
+      toast({
+        title: 'Cannot Save Permissions',
+        description: `Cannot save permissions for "${selectedRole.name}" because this role has no valid ID. Please refresh the page to load proper role data.`,
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -266,8 +375,14 @@ const RoleManagement: React.FC = () => {
     }
   };
 
-  const isProtectedRole = (roleName: string) =>
-    PROTECTED_ROLES.includes(roleName.toUpperCase());
+
+  const isProtectedRole = (role: Role | string) => {
+    const roleName = typeof role === 'string' ? role : role.name;
+    return PROTECTED_ROLES.includes(roleName.toUpperCase());
+  };
+
+  const getRoleName = (role: Role | string) => typeof role === 'string' ? role : role.name;
+  const getRoleId = (role: Role | string) => typeof role === 'string' ? role : role.id;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -279,10 +394,12 @@ const RoleManagement: React.FC = () => {
             Manage roles and configure granular permissions per module
           </p>
         </div>
-        <Button variant="outline" onClick={fetchRolesAndModules} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchRolesAndModules} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -342,51 +459,56 @@ const RoleManagement: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-2">
-                {roles.map((role) => (
-                  <div
-                    key={role.id}
-                    className={`flex items-center justify-between p-3 rounded-md border transition-colors cursor-pointer ${
-                      selectedRole?.id === role.id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:bg-muted/50'
-                    }`}
-                    onClick={() => handleRoleSelect(role.id.toString())}
-                  >
-                    <RoleBadge role={role.name} />
-                    {!isProtectedRole(role.name) && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Role</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete the role "{role.name}"?
-                              This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleDeleteRole(role.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                {roles.map((role) => {
+                  const roleName = getRoleName(role);
+                  const roleId = getRoleId(role);
+                  const isSelected = selectedRole?.name === roleName;
+                  return (
+                    <div
+                      key={roleId}
+                      className={`flex items-center justify-between p-3 rounded-md border transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:bg-muted/50'
+                      }`}
+                      onClick={() => handleRoleSelect(role)}
+                    >
+                      <RoleBadge role={roleName} />
+                      {!isProtectedRole(role) && typeof role !== 'string' && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
-                  </div>
-                ))}
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Role</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete the role "{roleName}"?
+                                This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteRole(role.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -444,24 +566,23 @@ const RoleManagement: React.FC = () => {
                 </DialogContent>
               </Dialog>
               {selectedRole && (
-                <Button onClick={handleSavePermissions} disabled={isSaving}>
+                <Button
+                  onClick={handleSavePermissions}
+                  disabled={isSaving || selectedRole.id <= 0}
+                  title={selectedRole.id <= 0 ? "Cannot save permissions for roles with invalid IDs. Fix backend to return proper role objects." : "Save permission changes"}
+                >
                   {isSaving ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <Save className="h-4 w-4 mr-2" />
                   )}
-                  Save
+                  {selectedRole.id <= 0 ? "Save Disabled" : "Save"}
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent>
-            {!selectedRole ? (
-              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <Shield className="h-12 w-12 mb-4 opacity-50" />
-                <p>Select a role from the left panel to configure permissions</p>
-              </div>
-            ) : isLoadingPermissions ? (
+            {isLoadingPermissions ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
@@ -484,81 +605,101 @@ const RoleManagement: React.FC = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {permissions.map((perm) => {
-                      const module = modules.find((m) => m.moduleName === perm.moduleName);
+                    {modules.map((module) => {
+                      // Find existing permission or use default empty permission
+                      const permission = permissions.find(p => p.moduleName === module.moduleName) || {
+                        moduleName: module.moduleName,
+                        canSelect: false,
+                        canCreate: false,
+                        canUpdate: false,
+                        canDelete: false,
+                      };
+
                       return (
-                        <TableRow key={perm.moduleName}>
-                          <TableCell className="font-medium">{perm.moduleName}</TableCell>
+                        <TableRow key={module.moduleName}>
+                          <TableCell className="font-medium">{module.moduleName}</TableCell>
                           <TableCell className="text-center">
                             <Checkbox
-                              checked={perm.canSelect}
+                              checked={permission.canSelect}
                               onCheckedChange={() =>
-                                togglePermission(perm.moduleName, 'canSelect')
+                                selectedRole ? togglePermission(module.moduleName, 'canSelect') : undefined
                               }
+                              disabled={!selectedRole}
                             />
                           </TableCell>
                           <TableCell className="text-center">
                             <Checkbox
-                              checked={perm.canCreate}
+                              checked={permission.canCreate}
                               onCheckedChange={() =>
-                                togglePermission(perm.moduleName, 'canCreate')
+                                selectedRole ? togglePermission(module.moduleName, 'canCreate') : undefined
                               }
+                              disabled={!selectedRole}
                             />
                           </TableCell>
                           <TableCell className="text-center">
                             <Checkbox
-                              checked={perm.canUpdate}
+                              checked={permission.canUpdate}
                               onCheckedChange={() =>
-                                togglePermission(perm.moduleName, 'canUpdate')
+                                selectedRole ? togglePermission(module.moduleName, 'canUpdate') : undefined
                               }
+                              disabled={!selectedRole}
                             />
                           </TableCell>
                           <TableCell className="text-center">
                             <Checkbox
-                              checked={perm.canDelete}
+                              checked={permission.canDelete}
                               onCheckedChange={() =>
-                                togglePermission(perm.moduleName, 'canDelete')
+                                selectedRole ? togglePermission(module.moduleName, 'canDelete') : undefined
                               }
+                              disabled={!selectedRole}
                             />
                           </TableCell>
                           <TableCell>
-                            {module && (
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Module</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete the module "{module.moduleName}"?
+                                    This will remove all associated permissions.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteModule(module.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                   >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Delete Module</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      Are you sure you want to delete the module "{perm.moduleName}"?
-                                      This will remove all associated permissions.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteModule(module.id)}
-                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    >
-                                      Delete
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            )}
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </TableCell>
                         </TableRow>
                       );
                     })}
                   </TableBody>
                 </Table>
+                {(!selectedRole || (selectedRole && selectedRole.id <= 0)) && (
+                  <div className="p-4 bg-muted/30 border-t">
+                    <p className="text-sm text-muted-foreground text-center">
+                      {selectedRole && selectedRole.id <= 0
+                        ? `Permissions shown for "${selectedRole.name}", but saving is disabled. Backend must return role objects with valid IDs.`
+                        : 'Select a role from the left panel to configure permissions'
+                      }
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { usersApi, rolesApi } from '@/services/api';
 import { User, Role } from '@/types';
 import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,14 +23,26 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import RoleBadge from '@/components/ui/RoleBadge';
-import { Plus, Pencil, Loader2, Users, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Loader2, Users, RefreshCw, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 const UserManagement: React.FC = () => {
+  const { isAuthenticated, hasAnyRole, isLoading: authLoading, user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [roles, setRoles] = useState<(Role | string)[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -70,9 +83,27 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  // Check authentication and permissions
   useEffect(() => {
+    if (authLoading) return;
+
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (!hasAnyRole(['SUPERADMIN', 'ADMIN'])) {
+      toast({
+        title: 'Access Denied',
+        description: 'You need SUPERADMIN or ADMIN role to access user management',
+        variant: 'destructive',
+      });
+      setIsLoading(false);
+      return;
+    }
+
     fetchData();
-  }, []);
+  }, [isAuthenticated, hasAnyRole, authLoading]);
 
   const handleCreateUser = async () => {
     if (!createForm.username || !createForm.email || !createForm.password) {
@@ -136,6 +167,44 @@ const UserManagement: React.FC = () => {
       roles: user.roles,
     });
     setIsEditOpen(true);
+  };
+
+  const handleDeleteUser = async (userId: number, username: string) => {
+    try {
+      await usersApi.delete(userId);
+      toast({
+        title: 'Success',
+        description: `User "${username}" has been deleted successfully`,
+      });
+      fetchData();
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to delete user';
+
+      let title = 'Error';
+      let description = errorMessage;
+
+      // Handle specific error cases from backend
+      if (error.response?.status === 400) {
+        if (errorMessage.includes('own account')) {
+          title = 'Cannot Delete Yourself';
+          description = 'You cannot delete your own account.';
+        } else {
+          title = 'Invalid Request';
+        }
+      } else if (error.response?.status === 403) {
+        title = 'Permission Denied';
+        description = 'You do not have permission to delete this user. You can only delete users with lower role hierarchy.';
+      } else if (error.response?.status === 404) {
+        title = 'User Not Found';
+        description = 'The user you are trying to delete no longer exists.';
+      }
+
+      toast({
+        title,
+        description,
+        variant: 'destructive',
+      });
+    }
   };
 
   const toggleRole = (
@@ -217,26 +286,30 @@ const UserManagement: React.FC = () => {
                 <div className="space-y-2">
                   <Label>Assign Roles</Label>
                   <div className="grid grid-cols-2 gap-2">
-                    {roles.map((role) => (
-                      <div
-                        key={role.id}
-                        className="flex items-center space-x-2"
-                      >
-                        <Checkbox
-                          id={`create-role-${role.id}`}
-                          checked={createForm.roles.includes(role.name)}
-                          onCheckedChange={() =>
-                            toggleRole(role.name, createForm, setCreateForm)
-                          }
-                        />
-                        <Label
-                          htmlFor={`create-role-${role.id}`}
-                          className="text-sm font-normal cursor-pointer"
+                    {roles.map((role) => {
+                      const roleName = typeof role === 'string' ? role : role.name;
+                      const roleKey = typeof role === 'string' ? role : role.id;
+                      return (
+                        <div
+                          key={roleKey}
+                          className="flex items-center space-x-2"
                         >
-                          {role.name}
-                        </Label>
-                      </div>
-                    ))}
+                          <Checkbox
+                            id={`create-role-${roleKey}`}
+                            checked={createForm.roles.includes(roleName)}
+                            onCheckedChange={() =>
+                              toggleRole(roleName, createForm, setCreateForm)
+                            }
+                          />
+                          <Label
+                            htmlFor={`create-role-${roleKey}`}
+                            className="text-sm font-normal cursor-pointer"
+                          >
+                            {roleName}
+                          </Label>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -267,7 +340,7 @@ const UserManagement: React.FC = () => {
             Users
           </CardTitle>
           <CardDescription>
-            {users.length} user{users.length !== 1 ? 's' : ''} registered
+            {users.filter(u => u.id !== user?.id).length} user{users.filter(u => u.id !== user?.id).length !== 1 ? 's' : ''} registered
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -288,7 +361,7 @@ const UserManagement: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
+                  {users.filter(u => u.id !== user?.id).map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="font-mono text-sm">
                         {user.id}
@@ -307,13 +380,51 @@ const UserManagement: React.FC = () => {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditDialog(user)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(user)}
+                            title="Edit user"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                title="Delete user"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete User</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete the user "{user.username}"?
+                                  <br />
+                                  <br />
+                                  <strong>Warning:</strong> This action cannot be undone. The user account will be permanently removed.
+                                  <br />
+                                  <br />
+                                  <strong>Permission Requirements:</strong> You can only delete users with lower role hierarchy than yourself.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteUser(user.id, user.username)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Delete User
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -341,23 +452,27 @@ const UserManagement: React.FC = () => {
             <div className="space-y-2">
               <Label>Assign Roles</Label>
               <div className="grid grid-cols-2 gap-2">
-                {roles.map((role) => (
-                  <div key={role.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`edit-role-${role.id}`}
-                      checked={editForm.roles.includes(role.name)}
-                      onCheckedChange={() =>
-                        toggleRole(role.name, editForm, setEditForm)
-                      }
-                    />
-                    <Label
-                      htmlFor={`edit-role-${role.id}`}
-                      className="text-sm font-normal cursor-pointer"
-                    >
-                      {role.name}
-                    </Label>
-                  </div>
-                ))}
+                {roles.map((role) => {
+                  const roleName = typeof role === 'string' ? role : role.name;
+                  const roleKey = typeof role === 'string' ? role : role.id;
+                  return (
+                    <div key={roleKey} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`edit-role-${roleKey}`}
+                        checked={editForm.roles.includes(roleName)}
+                        onCheckedChange={() =>
+                          toggleRole(roleName, editForm, setEditForm)
+                        }
+                      />
+                      <Label
+                        htmlFor={`edit-role-${roleKey}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {roleName}
+                      </Label>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

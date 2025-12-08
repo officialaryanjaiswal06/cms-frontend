@@ -41,7 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       title: 'User Management',
       icon: Users,
       path: '/users',
-      visible: true,
+      visible: hasAnyRole(['SUPERADMIN', 'ADMIN']),
     },
     {
       title: 'Roles & Permissions',
