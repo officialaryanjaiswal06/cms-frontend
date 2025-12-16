@@ -15,7 +15,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 224 71% 4%;
 
-    --primary: 173 80% 36%;
+    --primary: 38 92% 50%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 14% 96%;
@@ -38,7 +38,7 @@
 
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 173 80% 36%;
+    --ring: 38 92% 50%;
 
     --radius: 0.5rem;
 
@@ -51,12 +51,12 @@
     /* Sidebar */
     --sidebar-background: 220 14% 98%;
     --sidebar-foreground: 224 71% 4%;
-    --sidebar-primary: 173 80% 36%;
+    --sidebar-primary: 38 92% 50%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 14% 96%;
     --sidebar-accent-foreground: 224 71% 4%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 173 80% 36%;
+    --sidebar-ring: 38 92% 50%;
   }
 
   .dark {
@@ -69,7 +69,7 @@
     --popover: 224 71% 6%;
     --popover-foreground: 213 31% 91%;
 
-    --primary: 173 80% 40%;
+    --primary: 38 92% 50%;
     --primary-foreground: 224 71% 4%;
 
     --secondary: 215 28% 17%;
@@ -92,7 +92,7 @@
 
     --border: 215 28% 17%;
     --input: 215 28% 17%;
-    --ring: 173 80% 40%;
+    --ring: 38 92% 50%;
 
     /* Role badge colors - dark mode */
     --role-superadmin: 0 72% 51%;
@@ -103,12 +103,12 @@
     /* Sidebar */
     --sidebar-background: 224 71% 6%;
     --sidebar-foreground: 213 31% 91%;
-    --sidebar-primary: 173 80% 40%;
+    --sidebar-primary: 38 92% 50%;
     --sidebar-primary-foreground: 224 71% 4%;
     --sidebar-accent: 215 28% 17%;
     --sidebar-accent-foreground: 213 31% 91%;
     --sidebar-border: 215 28% 17%;
-    --sidebar-ring: 173 80% 40%;
+    --sidebar-ring: 38 92% 50%;
   }
 }
 

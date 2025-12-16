@@ -30,7 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const decodeAndSetToken = useCallback((tokenString: string) => {
     try {
       const decoded = jwtDecode<DecodedToken>(tokenString);
-      
+
       // Check if token is expired
       if (decoded.exp * 1000 < Date.now()) {
         localStorage.removeItem('token');
@@ -40,7 +40,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      setRoles(decoded.roles || []);
+      // Normalize roles by removing 'ROLE_' prefix
+      const rawRoles = decoded.roles || [];
+      const normalizedRoles = rawRoles.map(role =>
+        role.startsWith('ROLE_') ? role.replace('ROLE_', '') : role
+      );
+
+      console.log("Normalized Roles:", normalizedRoles); // Debug log
+      setRoles(normalizedRoles);
       setPermissions(decoded.permissions || []);
       return true;
     } catch (error) {
@@ -55,6 +62,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const userData = await usersApi.getMe();
       setUser(userData);
+
+      // Sync roles from user data if they exist (fallback or override token roles)
+      if (userData.roles && userData.roles.length > 0) {
+        const normalizeRole = (r: string) => r.startsWith('ROLE_') ? r.replace('ROLE_', '') : r;
+        const userRoles = userData.roles.map(normalizeRole);
+        console.log("Setting roles from User Data:", userRoles);
+        setRoles(userRoles);
+      }
     } catch (error) {
       console.error('Failed to fetch user:', error);
     }
@@ -75,16 +90,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token, decodeAndSetToken, fetchUser]);
 
   const login = async (username: string, password: string): Promise<boolean> => {
+    console.log("AuthContext.login called for:", username);
     try {
       const response = await authApi.login(username, password);
-      const newToken = response.token;
-      
+      console.log("API Response received:", response);
+
+      console.log("Response Keys:", Object.keys(response));
+      // Backend returns 'accessToken' usually, but let's be robust
+      const newToken = (response as any).accessToken || (response as any).token;
+
+      if (!newToken || typeof newToken !== 'string') {
+        console.error("Invalid token received:", newToken);
+        toast({
+          title: "Login Error",
+          description: "Server response missing access token.",
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      // Update localStorage immediately so subsequent requests work
       localStorage.setItem('token', newToken);
-      setToken(newToken);
-      
+
+      // Decode locally first
       const isValid = decodeAndSetToken(newToken);
+      console.log("Token decode validity:", isValid);
+
       if (isValid) {
+        // Wait for user details (including roles) to be fetched
         await fetchUser();
+
+        // NOW update the authenticated state, triggering UI updates
+        setToken(newToken);
+
         toast({
           title: "Login Successful",
           description: "Welcome back!",
@@ -93,6 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return false;
     } catch (error: any) {
+      console.error("AuthContext.login error:", error);
       const message = error.response?.data?.message || 'Invalid credentials';
       toast({
         title: "Login Failed",

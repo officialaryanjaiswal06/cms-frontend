@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { useNavigate, useLocation, Outlet, Link, Navigate } from "react-router-dom";
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import Sidebar from './Sidebar';
-import { Loader2 } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, LogOut, Bell, Menu, X, Loader2 } from "lucide-react";
 
 const DashboardLayout: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();

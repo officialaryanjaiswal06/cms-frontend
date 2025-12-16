@@ -1,17 +1,58 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
-import { 
-  AuthResponse, 
-  User, 
-  CreateUserDto, 
+import {
+  AuthResponse,
+  User,
+  CreateUserDto,
   UpdateUserRolesDto,
   Role,
   CreateRoleDto,
   Module,
   CreateModuleDto,
-  PermissionDto 
+  PermissionDto
 } from '@/types';
 
-const API_BASE_URL = 'http://localhost:9090';
+// Add new types for Register and OTP
+export interface RegisterDto {
+  username: string;
+  email: string;
+  password: string;
+}
+
+export interface ForgotPasswordDto {
+  email: string;
+}
+
+export interface ResetPasswordDto {
+  email: string;
+  otp: string;
+  newPassword: string;
+}
+
+export interface Notification {
+  id: number;
+  email: string;
+  subject: string;
+  messageBody: string;
+  category: 'SYSTEM_ALERT' | 'ACCOUNT' | 'PROMOTION' | 'OTP';
+  status: string;
+  retryTimes: number;
+  createdAt: string;
+}
+
+export interface SendNotificationDto {
+  email: string;
+  subject: string;
+  messageBody: string;
+  category: 'SYSTEM_ALERT' | 'ACCOUNT' | 'PROMOTION';
+}
+
+export interface BroadcastNotificationDto {
+  subject: string;
+  messageBody: string;
+  category: 'SYSTEM_ALERT' | 'ACCOUNT' | 'PROMOTION';
+}
+
+const API_BASE_URL = 'http://localhost:8080';
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -24,6 +65,14 @@ const api: AxiosInstance = axios.create({
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
+    // Check if this request is marked as public (No-Auth)
+    if (config.headers['No-Auth'] === 'true') {
+      // Remove the custom header before sending
+      delete config.headers['No-Auth'];
+      return config;
+    }
+
+    // Otherwise attach the token if available
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -46,19 +95,87 @@ api.interceptors.response.use(
 );
 
 // Auth API
+// Auth API
 export const authApi = {
   login: async (username: string, password: string): Promise<AuthResponse> => {
+    // REVERTED: Switching back to x-www-form-urlencoded for Spring Security defaults
     const params = new URLSearchParams();
     params.append('username', username);
     params.append('password', password);
-    
-    const response = await axios.post<AuthResponse>(`${API_BASE_URL}/login`, params, {
+
+    // Note: We use the base 'axios' instance but override headers for this specific call
+    const response = await api.post<AuthResponse>(`/login`, params, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
     });
     return response.data;
   },
+
+  register: async (data: RegisterDto): Promise<string> => {
+    // Backend endpoint: /auth/register
+    // No-Auth header ensures interceptor skips token
+    const response = await api.post('/auth/register', data, {
+      headers: { 'No-Auth': 'true' }
+    });
+    return response.data; // "User Registered Successfully"
+  },
+
+  validateOtp: async (email: string, otp: string, type: 'REGISTRATION' | 'FORGOT_PASSWORD'): Promise<string> => {
+    // Backend endpoint: /auth/verify-account
+    // Expects JSON Body: { email, otp } - Type is implied by endpoint
+    const response = await api.post(`/auth/verify-account`,
+      { email, otp },
+      { headers: { 'No-Auth': 'true' } }
+    );
+    return response.data;
+  },
+
+  forgotPassword: async (email: string): Promise<string> => {
+    const response = await api.post('/auth/forgot-password',
+      { email },
+      { headers: { 'No-Auth': 'true' } }
+    );
+    return response.data;
+  },
+
+  resetPassword: async (data: ResetPasswordDto): Promise<string> => {
+    const response = await api.post('/auth/reset-password',
+      data,
+      { headers: { 'No-Auth': 'true' } }
+    );
+    return response.data;
+  }
+};
+
+export const notificationsApi = {
+  getMyNotifications: async (email: string) => {
+    const response = await api.get('/notifications/mine', {
+      params: { email }
+    });
+    return response.data;
+  }
+};
+
+export const adminNotificationsApi = {
+  getHistory: async () => {
+    const response = await api.get<Notification[]>('/push/history');
+    return response.data;
+  },
+
+  sendManual: async (data: SendNotificationDto) => {
+    const response = await api.post('/push/manual', data);
+    return response.data;
+  },
+
+  broadcast: async (data: BroadcastNotificationDto) => {
+    const response = await api.post('/push/broadcast/users-only', data);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/push/${id}`);
+  }
 };
 
 // Users API

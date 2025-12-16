@@ -53,7 +53,11 @@ export interface LoginCredentials {
 }
 
 export interface AuthResponse {
-  token: string;
+  accessToken: string;
+  id: number;
+  username: string;
+  email: string;
+  roles: string[];
 }
 
 export interface DecodedToken {

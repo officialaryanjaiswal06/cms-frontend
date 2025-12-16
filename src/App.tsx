@@ -11,12 +11,26 @@ import Dashboard from "@/pages/Dashboard";
 import UserManagement from "@/pages/UserManagement";
 import RoleManagement from "@/pages/RoleManagement";
 import NotFound from "./pages/NotFound";
+import CMSLanding from "@/pages/CMSLanding";
+import Profile from '@/pages/Profile';
+import Notifications from '@/pages/Notifications';
+import NotificationManager from '@/pages/NotificationManager';
 
 const queryClient = new QueryClient();
 
 // Protected Route Component
-const ProtectedRoute = ({ children, requiredRoles }: { children: React.ReactNode; requiredRoles: string[] }) => {
-  const { isAuthenticated, hasAnyRole, isLoading } = useAuth();
+const ProtectedRoute = ({
+  children,
+  requiredRoles,
+  requiredPermission,
+  requiredPermissions
+}: {
+  children: React.ReactNode;
+  requiredRoles?: string[];
+  requiredPermission?: string;
+  requiredPermissions?: string[];
+}) => {
+  const { isAuthenticated, hasAnyRole, permissions, isLoading } = useAuth();
 
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen">
@@ -28,8 +42,39 @@ const ProtectedRoute = ({ children, requiredRoles }: { children: React.ReactNode
     return <Navigate to="/login" replace />;
   }
 
-  if (!hasAnyRole(requiredRoles)) {
-    return <Navigate to="/dashboard" replace />;
+  // Helper to check if user has any of the required permissions
+  const hasAnyPermission = (perms: string[] | undefined) => {
+    if (!perms || perms.length === 0) return false;
+    return perms.some(p => permissions?.includes(p));
+  };
+
+  // 1. Check Permissions first (most granular)
+  // Support both single requiredPermission and array requiredPermissions
+  const permissionToCheck = requiredPermissions || (requiredPermission ? [requiredPermission] : []);
+  const hasRequiredPermission = permissionToCheck.length > 0 && hasAnyPermission(permissionToCheck);
+
+  // 2. Check Roles
+  const hasRequiredRole = requiredRoles && requiredRoles.length > 0 && hasAnyRole(requiredRoles);
+
+  // 3. Logic: Allow access if EITHER Role condition met OR Permission condition met
+  // If neither matches (and at least one was required), deny.
+  const roleRequirementExists = requiredRoles && requiredRoles.length > 0;
+  const permissionRequirementExists = permissionToCheck.length > 0;
+
+  if (roleRequirementExists || permissionRequirementExists) {
+    const allowedByRole = roleRequirementExists ? hasRequiredRole : false;
+    const allowedByPermission = permissionRequirementExists ? hasRequiredPermission : false;
+
+    // If NO requirement passed, redirect
+    // Example: Roles=['ADMIN'], Perms=['READ'].
+    // If user has ADMIN but not READ -> Allow (allowedByRole=true)
+    // If user has READ but not ADMIN -> Allow (allowedByPermission=true)
+    // If user has neither -> Deny
+
+    // NOTE: Original logic implied "Role OR Permission". We keep that.
+    if (!allowedByRole && !allowedByPermission) {
+      return <Navigate to="/dashboard" replace />;
+    }
   }
 
   return <>{children}</>;
@@ -42,10 +87,12 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <BrowserRouter>
+          <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
             <Routes>
+              <Route path="/" element={<CMSLanding />} />
               <Route path="/login" element={<Login />} />
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/notifications" element={<Notifications />} />
               <Route element={<DashboardLayout />}>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route
@@ -61,6 +108,22 @@ const App = () => (
                   element={
                     <ProtectedRoute requiredRoles={['SUPERADMIN', 'ADMIN']}>
                       <RoleManagement />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/notifications"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={['SUPERADMIN', 'ADMIN']}
+                      requiredPermissions={[
+                        'NOTIFICATION_READ',
+                        'NOTIFICATION_CREATE',
+                        'NOTIFICATION_UPDATE',
+                        'NOTIFICATION_DELETE'
+                      ]}
+                    >
+                      <NotificationManager />
                     </ProtectedRoute>
                   }
                 />

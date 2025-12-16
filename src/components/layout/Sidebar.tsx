@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
-  Shield, 
+import {
+  LayoutDashboard,
+  Users,
+  Shield,
   LogOut,
   ChevronLeft,
   ChevronRight,
   Sun,
-  Moon
+  Moon,
+  Box, // Generic icon for modules
+  Bell
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,6 +21,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { modulesApi } from '@/services/api';
+import { Module } from '@/types';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -26,11 +30,102 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
-  const { hasAnyRole, logout, user } = useAuth();
+  const { hasAnyRole, logout, user, permissions, hasPermission } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
+  const [modules, setModules] = useState<Module[]>([]);
 
-  const menuItems = [
+  useEffect(() => {
+    const resolveModules = async () => {
+      let fetchedModules: Module[] = [];
+      let apiFailed = false;
+
+      // 1. If Admin/Superadmin, try fetch from API
+      if (hasAnyRole(['SUPERADMIN', 'ADMIN'])) {
+        try {
+          fetchedModules = await modulesApi.getAll();
+          setModules(fetchedModules);
+          return; // Success, exit
+        } catch (error) {
+          console.error("Failed to fetch modules from API, falling back to permissions", error);
+          apiFailed = true;
+          // Don't return, fall through to derived logic
+        }
+      }
+
+      // 2. If Regular User OR API failed, derive modules from permissions
+      //   if (permissions && (apiFailed || !hasAnyRole(['SUPERADMIN', 'ADMIN']))) {
+      //     const derivedModules: Module[] = permissions
+      //       .filter(p => p.endsWith('_READ') || p.endsWith("_CREATE") || p.endsWith("_UPDATE") || p.endsWith("_DELETE"))
+      //       .map(p => {
+      //         const rawName = p
+      //     .replace('_READ', '')
+      //     .replace('_CREATE', '')
+      //     .replace('_UPDATE', '')
+      //     .replace('_DELETE', '');
+
+      //         const nameWithSpaces = rawName.replace(/_/g, ' ');
+      //         const displayName = nameWithSpaces
+      //           .toLowerCase()
+      //           .split(' ')
+      //           .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      //           .join(' ');
+
+      //         return {
+      //           id: 0,
+      //           moduleName: displayName
+      //         };
+      //       });
+
+      //     setModules(derivedModules);
+      //   }
+      // };
+      if (permissions && (apiFailed || !hasAnyRole(['SUPERADMIN', 'ADMIN']))) {
+        const moduleSet = new Set<string>(); // to avoid duplicates
+
+        const derivedModules: Module[] = permissions
+          .filter(p =>
+            p.endsWith('_READ') ||
+            p.endsWith('_CREATE') ||
+            p.endsWith('_UPDATE') ||
+            p.endsWith('_DELETE')
+          )
+          .map(p => {
+            const rawName = p
+              .replace('_READ', '')
+              .replace('_CREATE', '')
+              .replace('_UPDATE', '')
+              .replace('_DELETE', '');
+
+            const nameWithSpaces = rawName.replace(/_/g, ' ');
+            const displayName = nameWithSpaces
+              .toLowerCase()
+              .split(' ')
+              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(' ');
+
+            return displayName;
+          })
+          .filter(name => {
+            if (moduleSet.has(name)) return false; // skip duplicates
+            moduleSet.add(name);
+            return true;
+          })
+          .map(name => ({
+            id: 0,
+            moduleName: name,
+          }));
+
+        setModules(derivedModules);
+      }
+    }
+
+    if (user) {
+      resolveModules();
+    }
+  }, [user, hasAnyRole, permissions]);
+
+  const staticMenuItems = [
     {
       title: 'Dashboard',
       icon: LayoutDashboard,
@@ -49,7 +144,29 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       path: '/roles',
       visible: hasAnyRole(['SUPERADMIN', 'ADMIN']),
     },
+    {
+      title: 'Notifications',
+      icon: Bell,
+      path: '/admin/notifications',
+      visible: hasAnyRole(['SUPERADMIN', 'ADMIN']) ||
+        ['NOTIFICATION_READ', 'NOTIFICATION_CREATE', 'NOTIFICATION_UPDATE', 'NOTIFICATION_DELETE'].some(p => hasPermission(p)) ||
+        modules.some(m => ['Notification', 'Notifications'].includes(m.moduleName)),
+    },
   ];
+
+  // Dynamically add modules to the menu
+  const moduleItems = modules
+    .filter(m => !['Notification', 'Notifications'].includes(m.moduleName))
+    .map((module) => ({
+      title: module.moduleName,
+      icon: Box,
+      path: `/modules/${module.moduleName.toLowerCase().replace(/\s+/g, '-')}`,
+      visible: true,
+      // Visibility is handled by the backend (only permitted modules are returned), 
+      // so we can set visible: true for everything returned.
+    }));
+
+  const menuItems = [...staticMenuItems, ...moduleItems];
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -108,7 +225,8 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="flex-1 space-y-1 p-3 overflow-y-auto custom-scrollbar">
+        {/* Added overflow-y-auto to handle many modules */}
         {menuItems.map((item) => (
           <MenuItem key={item.path} item={item} />
         ))}

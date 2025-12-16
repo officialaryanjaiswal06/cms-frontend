@@ -74,13 +74,44 @@ const RoleManagement: React.FC = () => {
   const fetchRolesAndModules = async () => {
     setIsLoading(true);
     try {
-      const [rolesData, modulesData] = await Promise.all([
-        rolesApi.getAll(),
-        modulesApi.getAll(),
-      ]);
+      // Fetch Roles first
+      let rolesData;
+      try {
+        rolesData = await rolesApi.getAll();
+      } catch (error) {
+        console.error('Error fetching roles:', error);
+        throw error; // Roles are critical, rethrow
+      }
+
+      // Fetch Modules separately to handle 403 independently
+      let modulesData: Module[] = [];
+      try {
+        modulesData = await modulesApi.getAll();
+      } catch (error: any) {
+        console.warn('⚠️ Failed to fetch modules (API blocked?). Using fallback or empty list.', error);
+        if (error.response?.status === 403 || error.response?.status === 401) {
+          toast({
+            title: 'Backend Restriction',
+            description: 'Cannot fetch specific modules due to backend restrictions (403 Forbidden). Permission matrix may be incomplete.',
+            variant: 'default', // 'warning' is not a valid variant
+            className: 'bg-yellow-100 text-yellow-900 border-yellow-200' // Custom styling for warning look
+          });
+
+          // If API fails, try to derive from Admin's permissions AS A FALLBACK (Same logic as Sidebar)
+          // But remember, this only shows what the ADMIN can see, not necessarily all modules.
+          // Better than nothing.
+          /*  
+            Assuming we can't get all modules, we can't accurately manage permissions for *other* modules.
+            So we leave modulesData as empty or derived.
+          */
+        } else {
+          throw error; // Real error
+        }
+      }
+
       console.log('Fetched roles:', rolesData);
       console.log('Fetched modules:', modulesData);
-      console.log('Role data types:', rolesData.map(r => ({ value: r, type: typeof r })));
+      console.log('Role data types:', rolesData.map((r: any) => ({ value: r, type: typeof r })));
 
       // Handle both string[] and Role[] formats from backend
       const processedRoles = rolesData.map((role: any) => {
@@ -99,7 +130,7 @@ const RoleManagement: React.FC = () => {
 
       // Check if currently selected role still exists after refresh
       if (selectedRole) {
-        const roleStillExists = processedRoles.some(role =>
+        const roleStillExists = processedRoles.some((role: any) =>
           (role.id && selectedRole.id && role.id === selectedRole.id) ||
           (role.name === selectedRole.name)
         );
@@ -466,11 +497,10 @@ const RoleManagement: React.FC = () => {
                   return (
                     <div
                       key={roleId}
-                      className={`flex items-center justify-between p-3 rounded-md border transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:bg-muted/50'
-                      }`}
+                      className={`flex items-center justify-between p-3 rounded-md border transition-colors cursor-pointer ${isSelected
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-muted/50'
+                        }`}
                       onClick={() => handleRoleSelect(role)}
                     >
                       <RoleBadge role={roleName} />
@@ -655,35 +685,37 @@ const RoleManagement: React.FC = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Module</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete the module "{module.moduleName}"?
-                                    This will remove all associated permissions.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => handleDeleteModule(module.id)}
-                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            {!['Notification', 'Notifications'].includes(module.moduleName) && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
                                   >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Module</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete the module "{module.moduleName}"?
+                                      This will remove all associated permissions.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDeleteModule(module.id)}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
