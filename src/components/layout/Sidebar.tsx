@@ -10,7 +10,8 @@ import {
   Sun,
   Moon,
   Box, // Generic icon for modules
-  Bell
+  Bell,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -151,6 +152,12 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       visible: hasAnyRole(['SUPERADMIN', 'ADMIN']) ||
         ['NOTIFICATION_READ', 'NOTIFICATION_CREATE', 'NOTIFICATION_UPDATE', 'NOTIFICATION_DELETE'].some(p => hasPermission(p)) ||
         modules.some(m => ['Notification', 'Notifications'].includes(m.moduleName)),
+    },
+    {
+      title: 'Schema Builder',
+      icon: FileText,
+      path: '/admin/schema',
+      visible: hasAnyRole(['SUPERADMIN', 'ADMIN']),
     },
   ];
 

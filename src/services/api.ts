@@ -251,6 +251,11 @@ export const modulesApi = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/admin/modules/${id}`);
   },
+
+  getInternalList: async (): Promise<string[]> => {
+    const response = await api.get<string[]>('/internal/modules/list');
+    return response.data;
+  },
 };
 
 export default api;

@@ -73,3 +73,30 @@ export interface ApiError {
   message: string;
   status: number;
 }
+
+// Headless CMS Types
+export interface FieldValidation {
+  minLength?: number;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  pattern?: string;
+}
+
+export interface SchemaField {
+  id?: string; // Internal ID for DnD (Frontend only), optional from Backend
+  name: string;
+  label: string;
+  type: 'text' | 'textarea' | 'rich-text' | 'email' | 'url' | 'number' | 'toggle' | 'checkbox' | 'date' | 'image';
+  placeholder?: string;
+  gridWidth: 1 | 2;
+  required?: boolean;
+  defaultValue?: any;
+  validation?: FieldValidation;
+}
+
+export interface PageSchema {
+  schemaName: string; // e.g. ACADEMIC (Backend expects schemaName)
+  schemaType: string; // e.g. EVENT
+  structure: SchemaField[];
+}

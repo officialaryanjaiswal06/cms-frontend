@@ -15,6 +15,10 @@ import CMSLanding from "@/pages/CMSLanding";
 import Profile from '@/pages/Profile';
 import Notifications from '@/pages/Notifications';
 import NotificationManager from '@/pages/NotificationManager';
+import SchemaBuilder from '@/pages/admin/SchemaBuilder';
+import CMSModulePage from '@/pages/CMSModulePage';
+import CMSPostList from '@/pages/CMSPostList';
+import CMSEditPage from '@/pages/CMSEditPage';
 
 const queryClient = new QueryClient();
 
@@ -73,7 +77,9 @@ const ProtectedRoute = ({
 
     // NOTE: Original logic implied "Role OR Permission". We keep that.
     if (!allowedByRole && !allowedByPermission) {
-      return <Navigate to="/dashboard" replace />;
+      // FIX: Redirect to Landing Page (/) instead of /dashboard to avoid infinite loops 
+      // and ensure unauthorized users are sent out of the admin area.
+      return <Navigate to="/" replace />;
     }
   }
 
@@ -94,7 +100,14 @@ const App = () => (
               <Route path="/profile" element={<Profile />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route element={<DashboardLayout />}>
-                <Route path="/dashboard" element={<Dashboard />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute requiredRoles={['SUPERADMIN', 'ADMIN', 'EDITOR', 'MODULE_EDITOR', 'PROGRAM_EDITOR', 'ABOUT_US_EDITOR']}>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route
                   path="/users"
                   element={
@@ -124,6 +137,38 @@ const App = () => (
                       ]}
                     >
                       <NotificationManager />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/schema"
+                  element={
+                    <ProtectedRoute requiredRoles={['SUPERADMIN', 'ADMIN']}>
+                      <SchemaBuilder />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/modules/:moduleName"
+                  element={
+                    <ProtectedRoute>
+                      <CMSPostList />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/modules/:moduleName/posts/:id"
+                  element={
+                    <ProtectedRoute>
+                      <CMSEditPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/modules/:moduleName/new"
+                  element={
+                    <ProtectedRoute>
+                      <CMSModulePage />
                     </ProtectedRoute>
                   }
                 />
