@@ -100,3 +100,20 @@ export interface PageSchema {
   schemaType: string; // e.g. EVENT
   structure: SchemaField[];
 }
+
+// Content Types
+export interface Post {
+  id: number;
+  displayTitle?: string; // Optional, computed frontend side usually or returned by backend if enhanced
+  published: boolean;
+  data: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+  attachmentPath?: string;
+  created_by_username?: string; // Backend raw field
+  createdByUsername?: string; // Normalized
+  entryDateTime?: string;
+  lastAction?: string;
+  schemaType?: string;
+  schema?: PageSchema;
+}

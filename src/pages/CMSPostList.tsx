@@ -7,12 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-interface Post {
-    id: number;
-    created_by_username: string;
-    attachmentPath?: string;
-    data: Record<string, any>;
-}
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Post } from '@/types'; // Import shared type
+
+// Remove local interface Post definition
+
 
 export default function CMSPostList() {
     const { moduleName } = useParams<{ moduleName: string }>();
@@ -52,7 +52,8 @@ export default function CMSPostList() {
                                 Title: 'Sample Post',
                                 Mission: 'This is a sample mission statement.',
                                 Featured: true
-                            }
+                            },
+                            published: true
                         }
                     ]);
                 }
@@ -67,6 +68,33 @@ export default function CMSPostList() {
 
         fetchPosts();
     }, [moduleName, normalizedModule, token]);
+
+    const handleStatusToggle = async (e: React.MouseEvent, post: Post) => {
+        e.preventDefault(); // Prevent card click
+        e.stopPropagation();
+
+        const newStatus = !post.published;
+
+        // Optimistic UI update
+        setPosts(prev => prev.map(p =>
+            p.id === post.id ? { ...p, published: newStatus } : p
+        ));
+
+        try {
+            // PATCH /content/post/entry/{id}/status?publish={true/false}
+            await axios.patch(`http://localhost:8080/content/post/entry/${post.id}/status?publish=${newStatus}`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            toast.success(`Post ${newStatus ? 'published' : 'unpublished'} successfully`);
+        } catch (error) {
+            console.error("Failed to update status", error);
+            toast.error("Failed to update status");
+            // Revert on failure
+            setPosts(prev => prev.map(p =>
+                p.id === post.id ? { ...p, published: !newStatus } : p
+            ));
+        }
+    };
 
     if (!moduleName) return <Navigate to="/dashboard" />;
 
@@ -153,9 +181,21 @@ export default function CMSPostList() {
                                     )}
 
                                     <CardHeader className="pb-3">
-                                        <CardTitle className="line-clamp-2 text-lg group-hover:text-primary transition-colors">
+                                        <CardTitle className="line-clamp-2 text-lg group-hover:text-primary transition-colors mb-2">
                                             {String(displayTitle)}
                                         </CardTitle>
+                                        <div className="flex items-center justify-between">
+                                            <Badge variant={post.published ? "default" : "secondary"} className={post.published ? "bg-green-600 hover:bg-green-700" : ""}>
+                                                {post.published ? "LIVE" : "DRAFT"}
+                                            </Badge>
+
+                                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                                <Switch
+                                                    checked={post.published}
+                                                    onCheckedChange={(checked) => handleStatusToggle({ preventDefault: () => { }, stopPropagation: () => { } } as any, post)}
+                                                />
+                                            </div>
+                                        </div>
                                     </CardHeader>
 
                                     <CardContent className="flex-1">

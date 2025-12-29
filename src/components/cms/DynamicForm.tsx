@@ -231,7 +231,7 @@ export default function DynamicForm({ moduleName, schemaType, initialValues, edi
         }
     };
 
-    const onSubmit = async (data: any) => {
+    const onSubmit = async (data: any, isPublished: boolean) => {
         setSubmitting(true);
         try {
 
@@ -246,6 +246,9 @@ export default function DynamicForm({ moduleName, schemaType, initialValues, edi
                     : `http://localhost:8080/content/post/${moduleName}`;
             }
 
+            // Append isPublished query param
+            url += `?isPublished=${isPublished}`;
+
             // Prepare Payload
             const jsonPayload = JSON.stringify(data);
             const formData = new FormData();
@@ -255,12 +258,12 @@ export default function DynamicForm({ moduleName, schemaType, initialValues, edi
                 await axios.put(url, formData, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                toast.success("Content Updated Successfully!");
+                toast.success(isPublished ? "Content Published Successfully!" : "Draft Saved Successfully!");
             } else {
                 await axios.post(url, formData, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                toast.success("Content Saved Successfully!");
+                toast.success(isPublished ? "Content Published Successfully!" : "Draft Saved Successfully!");
                 reset(); // Only reset on create
             }
 
@@ -289,7 +292,7 @@ export default function DynamicForm({ moduleName, schemaType, initialValues, edi
                     <CardDescription>Fill in the details below</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                    <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {schema.structure.map((field) => (
                                 <div
@@ -443,10 +446,28 @@ export default function DynamicForm({ moduleName, schemaType, initialValues, edi
                             ))}
                         </div>
 
-                        <Button type="submit" disabled={submitting} className="w-full md:w-auto">
-                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Save Content
-                        </Button>
+                        <div className="flex gap-4">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={submitting}
+                                onClick={handleSubmit((data) => onSubmit(data, false))}
+                                className="w-full md:w-auto"
+                            >
+                                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Save as Draft
+                            </Button>
+
+                            <Button
+                                type="button"
+                                disabled={submitting}
+                                onClick={handleSubmit((data) => onSubmit(data, true))}
+                                className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white"
+                            >
+                                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Publish Now
+                            </Button>
+                        </div>
                     </form>
                 </CardContent>
             </Card>

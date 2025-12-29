@@ -11,6 +11,7 @@ import Dashboard from "@/pages/Dashboard";
 import UserManagement from "@/pages/UserManagement";
 import RoleManagement from "@/pages/RoleManagement";
 import NotFound from "./pages/NotFound";
+import Home from "@/pages/public/Home";
 import CMSLanding from "@/pages/CMSLanding";
 import Profile from '@/pages/Profile';
 import Notifications from '@/pages/Notifications';
@@ -19,6 +20,9 @@ import SchemaBuilder from '@/pages/admin/SchemaBuilder';
 import CMSModulePage from '@/pages/CMSModulePage';
 import CMSPostList from '@/pages/CMSPostList';
 import CMSEditPage from '@/pages/CMSEditPage';
+import PublicLayout from '@/components/layout/PublicLayout';
+import PublicPostList from '@/pages/public/PublicPostList';
+import PublicPostDetail from '@/pages/public/PublicPostDetail';
 
 const queryClient = new QueryClient();
 
@@ -95,7 +99,13 @@ const App = () => (
           <Sonner />
           <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
             <Routes>
+              {/* Public Routes */}
               <Route path="/" element={<CMSLanding />} />
+              <Route element={<PublicLayout />}>
+                <Route path="/view/:moduleName" element={<PublicPostList />} />
+                <Route path="/view/:moduleName/:id" element={<PublicPostDetail />} />
+              </Route>
+
               <Route path="/login" element={<Login />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/notifications" element={<Notifications />} />

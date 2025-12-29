@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
     AlertDialog,
@@ -140,6 +141,19 @@ export default function CMSEditPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {/* Status Badge */}
+                        {fullPost && (
+                            <Badge
+                                variant={fullPost.published ? "default" : "secondary"}
+                                className={cn(
+                                    "text-sm px-3 py-1",
+                                    fullPost.published ? "bg-green-600 hover:bg-green-700" : ""
+                                )}
+                            >
+                                {fullPost.published ? "LIVE" : "DRAFT"}
+                            </Badge>
+                        )}
+
                         {!isEditing ? (
                             <>
                                 <Button variant="outline" onClick={() => setIsEditing(true)}>
